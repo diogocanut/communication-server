@@ -1,0 +1,5 @@
+﻿  Control.cpp
+Control.obj : error LNK2019: sÝmbolo externo indefinido binn_object referenciado na funþÒo main
+Control.obj : error LNK2019: sÝmbolo externo indefinido binn_object_set referenciado na funþÒo binn_object_set_int32
+C:\Users\Diogo\Downloads\binn-master\binn-master\src\win32\Debug\binn-1.0.lib : warning LNK4272: o tipo de mßquina da biblioteca 'x86' estß em conflito com o tipo de mßquina de destino 'x64'
+C:\Projetos\communication-server\Control\x64\Debug\Control.exe : fatal error LNK1120: 2 externo nÒo resolvidos
