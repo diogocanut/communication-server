@@ -171,11 +171,10 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 			commandsMutex,
 			INFINITE);
 
-		switch (dwWaitResult)
-		{
+		switch (dwWaitResult) {
+
 		case WAIT_OBJECT_0:
 			__try {
-
 				// V serializar dados que chegaram
 				binn_object_set_int32(obj, (char*)"ack", command.ack);
 				binn_object_set_int32(obj, (char*)"type", command.type);
@@ -199,18 +198,15 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 					return 1;
 				}
 
-				if (!ReleaseMutex(commandsMutex))
-				{
+				if (!ReleaseMutex(commandsMutex)) {
 					printf("Error releasing mutex: %d\n", GetLastError());
 					return 1;
 				}
 			}
 			break;
-
 		case WAIT_ABANDONED:
 			return 1;
 		}
-
 	} while (iResult > 0);
 	
 	iResult = shutdown(SendCommandsSocket, SD_SEND);
@@ -297,8 +293,7 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 			commandsMutex,
 			INFINITE);
 
-		switch (dwWaitResult)
-		{
+		switch (dwWaitResult) {
 		case WAIT_OBJECT_0:
 			__try {
 				if (isWaitingCommandAck) {
@@ -327,12 +322,10 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 					}
 				}
 
-				if (!ReleaseMutex(commandsMutex))
-				{
+				if (!ReleaseMutex(commandsMutex)) {
 					printf("Error releasing mutex: %d\n", GetLastError());
 					return 1;
 				}
-
 			}
 			break;
 

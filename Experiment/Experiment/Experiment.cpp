@@ -33,7 +33,7 @@ WSADATA wsaData;
 DWORD receive_commands_thread_id;
 DWORD send_commands_server_thread_id;
 
-SOCKET ExperimentClientSocket = INVALID_SOCKET;
+SOCKET SendCommandsSocket = INVALID_SOCKET;
 
 char ack_recvbuf[DEFAULT_BUFLEN];
 
@@ -153,7 +153,7 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 			WSACleanup();
 			return 1;
 		}
-
+		
 	} while (iResult > 0);
 	
 	iResult = shutdown(ConnectSocket, SD_SEND);
@@ -166,6 +166,72 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 
 	closesocket(ConnectSocket);
 	WSACleanup();
+
+	return 0;
+}
+
+DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
+	int iResult;
+
+	SOCKET ListenSocket = INVALID_SOCKET;
+
+	struct addrinfo* result = NULL;
+	struct addrinfo hints;
+
+	int iSendResult;
+
+	int recvbuflen = DEFAULT_BUFLEN;
+
+	ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = AI_PASSIVE;
+
+	iResult = getaddrinfo(NULL, SEND_COMMANDS_SERVER_PORT, &hints, &result);
+	if (iResult != 0) {
+		printf("getaddrinfo failed with error: %d\n", iResult);
+		WSACleanup();
+		return 1;
+	}
+
+	ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+	if (ListenSocket == INVALID_SOCKET) {
+		printf("socket failed with error: %ld\n", WSAGetLastError());
+		freeaddrinfo(result);
+		WSACleanup();
+		return 1;
+	}
+
+	iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
+	if (iResult == SOCKET_ERROR) {
+		printf("bind failed with error: %d\n", WSAGetLastError());
+		freeaddrinfo(result);
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	freeaddrinfo(result);
+
+	iResult = listen(ListenSocket, SOMAXCONN);
+	if (iResult == SOCKET_ERROR) {
+		printf("listen failed with error: %d\n", WSAGetLastError());
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	SendCommandsSocket = accept(ListenSocket, NULL, NULL);
+	if (SendCommandsSocket == INVALID_SOCKET) {
+		printf("accept failed with error: %d\n", WSAGetLastError());
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
+
+
+	closesocket(ListenSocket);
 
 	return 0;
 }
