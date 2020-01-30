@@ -1,7 +1,6 @@
 ﻿  Experiment.cpp
-C:\Projetos\communication-server\Experiment\Experiment\Experiment.cpp(56,9): warning C4101: 'hndThread2': variável local não referenciada
-C:\Projetos\communication-server\Experiment\Experiment\Experiment.cpp(79,7): warning C4101: 'recvbuf': variável local não referenciada
-C:\Projetos\communication-server\Experiment\Experiment\Experiment.cpp(78,7): warning C4101: 'sendbuf': variável local não referenciada
-C:\Projetos\communication-server\Experiment\Experiment\Experiment.cpp(75,6): warning C4101: 'iSendResult': variável local não referenciada
+C:\Projetos\communication-server\Experiment\Experiment\Experiment.cpp(62,9): warning C4101: 'hndThread2': variável local não referenciada
+C:\Projetos\communication-server\Experiment\Experiment\Experiment.cpp(85,7): warning C4101: 'recvbuf': variável local não referenciada
+C:\Projetos\communication-server\Experiment\Experiment\Experiment.cpp(84,7): warning C4101: 'sendbuf': variável local não referenciada
   Experiment.vcxproj -> C:\Projetos\communication-server\Experiment\Debug\Experiment.exe
   0 arquivo(s) copiado(s)

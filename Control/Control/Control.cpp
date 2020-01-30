@@ -16,6 +16,7 @@
 #pragma comment (lib, "AdvApi32.lib")
 
 #define DEFAULT_BUFLEN 1024
+
 /* 
 	Portas para recebimento e envio de comandos e dados
  O módulo de controle consiste em 2 threads de comandos, uma para recebimento do cliente
@@ -33,10 +34,16 @@ struct Command {
 	int type;
 	int command;
 };
-
 struct Command command;
 
 WSADATA wsaData;
+
+// Caso cliente esteja esperando um Ack
+int isWaitingCommandAck = 0;
+int isWaitingDataAck = 0;
+
+// Obj da biblioteca de serialização
+binn* obj = binn_object();
 
 // Id das respectivas threads
 DWORD receive_commands_thread_id;
@@ -45,12 +52,11 @@ DWORD receive_data_thread_id;
 DWORD send_data_thread_id;
 
 // Socket da thread de envio de comandos e dados
-SOCKET SendCommandsClientSocket = INVALID_SOCKET;
-SOCKET SendDataClientSocket = INVALID_SOCKET;
+SOCKET SendCommandsSocket = INVALID_SOCKET;
+SOCKET ReceiveCommandsSocket = INVALID_SOCKET;
+SOCKET SendDataSocket = INVALID_SOCKET;
 
-// Buffers de dados globais
-char command_recvbuf[DEFAULT_BUFLEN];
-char data_recvbuf[DEFAULT_BUFLEN];
+
 // Declaração de cada uma das threads
 DWORD WINAPI receive_commands_thread(LPVOID lpParam);
 DWORD WINAPI send_commands_server_thread(LPVOID lpParam);
@@ -78,13 +84,19 @@ int main()
 		return 1;
 	}
 
-
 	HANDLE hndThread1;
-	hndThread1 = CreateThread(NULL, 0, send_commands_server_thread, NULL, 0, &receive_commands_thread_id);
+	hndThread1 = CreateThread(NULL, 0, receive_commands_thread, NULL, 0, &receive_commands_thread_id);
+
+	HANDLE hndThread2;
+	hndThread2 = CreateThread(NULL, 0, send_commands_server_thread, NULL, 0, &send_commands_server_thread_id);
 
 	if (NULL != hndThread1)
 		WaitForSingleObject(hndThread1, INFINITE);
 	CloseHandle(hndThread1);
+
+	if (NULL != hndThread2)
+		WaitForSingleObject(hndThread2, INFINITE);
+	CloseHandle(hndThread2);
 
 	CloseHandle(commandsMutex);
 
@@ -103,8 +115,6 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 
 	int recvbuflen = DEFAULT_BUFLEN;
 
-	binn* obj;
-	obj = binn_object();
 	DWORD dwWaitResult;
 
 	ZeroMemory(&hints, sizeof(hints));
@@ -115,14 +125,14 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 
 	iResult = getaddrinfo(NULL, SEND_COMMANDS_PORT, &hints, &result);
 	if (iResult != 0) {
-		printf("getaddrinfo failed with error: %d\n", iResult);
+		printf("Getaddrinfo failed with error: %d\n", iResult);
 		WSACleanup();
 		return 1;
 	}
 
 	ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (ListenSocket == INVALID_SOCKET) {
-		printf("socket failed with error: %ld\n", WSAGetLastError());
+		printf("Socket failed with error: %ld\n", WSAGetLastError());
 		freeaddrinfo(result);
 		WSACleanup();
 		return 1;
@@ -130,7 +140,7 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 
 	iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
 	if (iResult == SOCKET_ERROR) {
-		printf("bind failed with error: %d\n", WSAGetLastError());
+		printf("Bind failed with error: %d\n", WSAGetLastError());
 		freeaddrinfo(result);
 		closesocket(ListenSocket);
 		WSACleanup();
@@ -141,16 +151,16 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 
 	iResult = listen(ListenSocket, SOMAXCONN);
 	if (iResult == SOCKET_ERROR) {
-		printf("listen failed with error: %d\n", WSAGetLastError());
+		printf("Listen failed with error: %d\n", WSAGetLastError());
 		closesocket(ListenSocket);
 		WSACleanup();
 		return 1;
 	}
 
 
-	SendCommandsClientSocket = accept(ListenSocket, NULL, NULL);
-	if (SendCommandsClientSocket == INVALID_SOCKET) {
-		printf("accept failed with error: %d\n", WSAGetLastError());
+	SendCommandsSocket = accept(ListenSocket, NULL, NULL);
+	if (SendCommandsSocket == INVALID_SOCKET) {
+		printf("Accept failed with error: %d\n", WSAGetLastError());
 		closesocket(ListenSocket);
 		WSACleanup();
 		return 1;
@@ -168,20 +178,26 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 		case WAIT_OBJECT_0:
 			__try {
 
-				command.ack = 4;
-				command.type = 2;
-				command.command = 12345;
+
+				// V serializar dados que chegaram
 				binn_object_set_int32(obj, (char*)"ack", command.ack);
 				binn_object_set_int32(obj, (char*)"type", command.type);
 				binn_object_set_int32(obj, (char*)"command", command.command);
 
-				iSendResult = send(SendCommandsClientSocket, (const char*)binn_ptr(obj), binn_size(obj), 0);
+				iSendResult = send(SendCommandsSocket, (const char*)binn_ptr(obj), binn_size(obj), 0);
 				printf("Bytes sent: %d\n", iSendResult);
+
+				iResult = recv(SendCommandsSocket, (char*)binn_ptr(obj), recvbuflen, 0);
+				if (iResult > 0) {
+					int test = binn_object_int32(obj, (char*)"ack");
+					printf("Ack received from Experiment: %d\n", test);
+					isWaitingCommandAck = 1;
+				}
 			}
 			__finally {
 				if (iSendResult == SOCKET_ERROR) {
-					printf("send failed with error: %d\n", WSAGetLastError());
-					closesocket(SendCommandsClientSocket);
+					printf("Send failed with error: %d\n", WSAGetLastError());
+					closesocket(SendCommandsSocket);
 					WSACleanup();
 					return 1;
 				}
@@ -201,17 +217,146 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 
 	} while (iResult > 0);
 	
-	iResult = shutdown(SendCommandsClientSocket, SD_SEND);
+	iResult = shutdown(SendCommandsSocket, SD_SEND);
 	if (iResult == SOCKET_ERROR) {
-		printf("shutdown failed with error: %d\n", WSAGetLastError());
-		closesocket(SendCommandsClientSocket);
+		printf("Shutdown failed with error: %d\n", WSAGetLastError());
+		closesocket(SendCommandsSocket);
 		WSACleanup();
 		return 1;
 	}
 
 	WSACleanup();
+	closesocket(SendCommandsSocket);
 	closesocket(ListenSocket);
 	binn_free(obj);
 
 	return 0;
+}
+
+DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
+	int iResult;
+
+	SOCKET ListenSocket = INVALID_SOCKET;
+
+	struct addrinfo* result = NULL;
+	struct addrinfo hints;
+
+	DWORD dwWaitResult;
+
+	int iSendResult;
+
+	int recvbuflen = DEFAULT_BUFLEN;
+
+	ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = AI_PASSIVE;
+
+	iResult = getaddrinfo(NULL, RECEIVE_COMMANDS_PORT, &hints, &result);
+	if (iResult != 0) {
+		printf("Getaddrinfo failed with error: %d\n", iResult);
+		WSACleanup();
+		return 1;
+	}
+
+	ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+	if (ListenSocket == INVALID_SOCKET) {
+		printf("Socket failed with error: %ld\n", WSAGetLastError());
+		freeaddrinfo(result);
+		WSACleanup();
+		return 1;
+	}
+
+	iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
+	if (iResult == SOCKET_ERROR) {
+		printf("Bind failed with error: %d\n", WSAGetLastError());
+		freeaddrinfo(result);
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	freeaddrinfo(result);
+
+	iResult = listen(ListenSocket, SOMAXCONN);
+	if (iResult == SOCKET_ERROR) {
+		printf("Listen failed with error: %d\n", WSAGetLastError());
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	ReceiveCommandsSocket = accept(ListenSocket, NULL, NULL);
+	if (ReceiveCommandsSocket == INVALID_SOCKET) {
+		printf("Accept failed with error: %d\n", WSAGetLastError());
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
+
+
+	do {
+
+		dwWaitResult = WaitForSingleObject(
+			commandsMutex,
+			INFINITE);
+
+		switch (dwWaitResult)
+		{
+		case WAIT_OBJECT_0:
+			__try {
+				if (isWaitingCommandAck) {
+					iSendResult = send(ReceiveCommandsSocket, (const char*)binn_ptr(obj), binn_size(obj), 0);
+					printf("Bytes sent: %d\n", iSendResult);
+					isWaitingCommandAck = 0;
+				}
+
+				iResult = recv(ReceiveCommandsSocket, (char*)binn_ptr(obj), recvbuflen, 0);
+				if (iResult > 0) {
+					int test = binn_object_int32(obj, (char*)"ack");
+					printf("Control server received command from client: %d\n", test);
+				}
+			}
+			__finally {
+				if (isWaitingCommandAck) {
+					if (iSendResult == SOCKET_ERROR) {
+						printf("Send failed with error: %d\n", WSAGetLastError());
+						closesocket(SendCommandsSocket);
+						WSACleanup();
+						return 1;
+					}
+				}
+
+				if (!ReleaseMutex(commandsMutex))
+				{
+					printf("Error releasing mutex: %d\n", GetLastError());
+					return 1;
+				}
+
+			}
+			break;
+
+		case WAIT_ABANDONED:
+			return 1;
+		}
+
+
+	} while (iResult > 0);
+
+	iResult = shutdown(SendCommandsSocket, SD_SEND);
+	if (iResult == SOCKET_ERROR) {
+		printf("Shutdown failed with error: %d\n", WSAGetLastError());
+		closesocket(SendCommandsSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	WSACleanup();
+	closesocket(ReceiveCommandsSocket);
+	closesocket(ListenSocket);
+	binn_free(obj);
+
+	return 0;
+
 }

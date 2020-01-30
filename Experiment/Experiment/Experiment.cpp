@@ -11,19 +11,25 @@
 #include <strsafe.h>
 #include "binn.h"
 
-// Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
-// #pragma comment (lib, "Mswsock.lib")
 
 #define DEFAULT_BUFLEN 1024
 #define RECEIVE_COMMANDS_FROM_CONTROL_PORT "27013"
 #define SEND_COMMANDS_SERVER_PORT "27016"
 
+// Estrutura do comando
+struct Command {
+	int ack;
+	int type;
+	int command;
+};
+
+struct Command command;
+
 WSADATA wsaData;
 
 DWORD receive_commands_thread_id;
 DWORD send_commands_server_thread_id;
-CRITICAL_SECTION critical;
 
 SOCKET ExperimentClientSocket = INVALID_SOCKET;
 
@@ -83,6 +89,9 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_protocol = IPPROTO_TCP;
 
+	binn* obj;
+	obj = binn_object();
+
 	// Resolve the server address and port
 	iResult = getaddrinfo("localhost", RECEIVE_COMMANDS_FROM_CONTROL_PORT, &hints, &result);
 	if (iResult != 0) {
@@ -121,25 +130,30 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 		return 1;
 	}
 
-	binn* obj;
-
-	// Create binn object
-	obj = binn_object();
-
-	// Receive until the peer closes the connection
 		iResult = recv(ConnectSocket, (char *)binn_ptr(obj), DEFAULT_BUFLEN, 0);
 		if (iResult > 0) {
 			printf("Bytes received: %d\n", iResult);
-			int test = binn_object_int32(obj, (char*)"ack");
-			printf("Experiment server received command: %d\n", test);
+			command.ack = binn_object_int32(obj, (char*)"ack");
+			command.type = binn_object_int32(obj, (char*)"type");
+			command.command = binn_object_int32(obj, (char*)"command");
+			printf("Experiment server received command: %d\n", command.ack);
 		}
 		else if (iResult == 0)
 			printf("Connection closed\n");
 		else
 			printf("recv failed with error: %d\n", WSAGetLastError());
 
+		iSendResult = send(ConnectSocket, (const char*)binn_ptr(obj), binn_size(obj), 0);
+		printf("Bytes sent: %d\n", iSendResult);
+
+		if (iSendResult == SOCKET_ERROR) {
+			printf("send failed with error: %d\n", WSAGetLastError());
+			closesocket(ConnectSocket);
+			WSACleanup();
+			return 1;
+		}
+
 	
-	// shutdown the connection since no more data will be sent
 	iResult = shutdown(ConnectSocket, SD_SEND);
 	if (iResult == SOCKET_ERROR) {
 		printf("shutdown failed with error: %d\n", WSAGetLastError());
@@ -148,7 +162,6 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 		return 1;
 	}
 
-	// cleanup
 	closesocket(ConnectSocket);
 	WSACleanup();
 
