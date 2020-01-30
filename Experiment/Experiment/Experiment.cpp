@@ -26,6 +26,8 @@ struct Command {
 
 struct Command command;
 
+binn* obj = binn_object();
+
 WSADATA wsaData;
 
 DWORD receive_commands_thread_id;
@@ -89,10 +91,6 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_protocol = IPPROTO_TCP;
 
-	binn* obj;
-	obj = binn_object();
-
-	// Resolve the server address and port
 	iResult = getaddrinfo("localhost", RECEIVE_COMMANDS_FROM_CONTROL_PORT, &hints, &result);
 	if (iResult != 0) {
 		printf("getaddrinfo failed with error: %d\n", iResult);
@@ -100,10 +98,8 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 		return 1;
 	}
 
-	// Attempt to connect to an address until one succeeds
 	for (ptr = result; ptr != NULL; ptr = ptr->ai_next) {
 
-		// Create a SOCKET for connecting to server
 		ConnectSocket = socket(ptr->ai_family, ptr->ai_socktype,
 			ptr->ai_protocol);
 		if (ConnectSocket == INVALID_SOCKET) {
@@ -112,7 +108,6 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 			return 1;
 		}
 
-		// Connect to server.
 		iResult = connect(ConnectSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
 		if (iResult == SOCKET_ERROR) {
 			closesocket(ConnectSocket);
@@ -130,13 +125,19 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 		return 1;
 	}
 
-		iResult = recv(ConnectSocket, (char *)binn_ptr(obj), DEFAULT_BUFLEN, 0);
+	do {
+		iResult = recv(ConnectSocket, (char*)binn_ptr(obj), DEFAULT_BUFLEN, 0);
 		if (iResult > 0) {
 			printf("Bytes received: %d\n", iResult);
 			command.ack = binn_object_int32(obj, (char*)"ack");
 			command.type = binn_object_int32(obj, (char*)"type");
 			command.command = binn_object_int32(obj, (char*)"command");
-			printf("Experiment server received command: %d\n", command.ack);
+			printf(
+				"Experiment server received command from control: %d %d %d\n",
+				command.ack,
+				command.type,
+				command.command
+			);
 		}
 		else if (iResult == 0)
 			printf("Connection closed\n");
@@ -153,6 +154,7 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 			return 1;
 		}
 
+	} while (iResult > 0);
 	
 	iResult = shutdown(ConnectSocket, SD_SEND);
 	if (iResult == SOCKET_ERROR) {

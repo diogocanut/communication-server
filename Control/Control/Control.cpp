@@ -157,7 +157,6 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 		return 1;
 	}
 
-
 	SendCommandsSocket = accept(ListenSocket, NULL, NULL);
 	if (SendCommandsSocket == INVALID_SOCKET) {
 		printf("Accept failed with error: %d\n", WSAGetLastError());
@@ -165,7 +164,6 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 		WSACleanup();
 		return 1;
 	}
-
 
 	do {
 
@@ -177,7 +175,6 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 		{
 		case WAIT_OBJECT_0:
 			__try {
-
 
 				// V serializar dados que chegaram
 				binn_object_set_int32(obj, (char*)"ack", command.ack);
@@ -207,7 +204,6 @@ DWORD WINAPI send_commands_server_thread(LPVOID lpParam) {
 					printf("Error releasing mutex: %d\n", GetLastError());
 					return 1;
 				}
-
 			}
 			break;
 
@@ -295,7 +291,6 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 		return 1;
 	}
 
-
 	do {
 
 		dwWaitResult = WaitForSingleObject(
@@ -307,15 +302,19 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 		case WAIT_OBJECT_0:
 			__try {
 				if (isWaitingCommandAck) {
-					iSendResult = send(ReceiveCommandsSocket, (const char*)binn_ptr(obj), binn_size(obj), 0);
+					iSendResult = send(ReceiveCommandsSocket, (const char*)&command, sizeof(Command), 0);
 					printf("Bytes sent: %d\n", iSendResult);
 					isWaitingCommandAck = 0;
 				}
 
-				iResult = recv(ReceiveCommandsSocket, (char*)binn_ptr(obj), recvbuflen, 0);
+				iResult = recv(ReceiveCommandsSocket, (char*)&command, sizeof(Command), 0);
 				if (iResult > 0) {
-					int test = binn_object_int32(obj, (char*)"ack");
-					printf("Control server received command from client: %d\n", test);
+					printf(
+						"Control server received command from client: %d %d %d\n", 
+						command.ack,
+						command.type, 
+						command.command
+					);
 				}
 			}
 			__finally {
@@ -340,7 +339,6 @@ DWORD WINAPI receive_commands_thread(LPVOID lpParam) {
 		case WAIT_ABANDONED:
 			return 1;
 		}
-
 
 	} while (iResult > 0);
 
